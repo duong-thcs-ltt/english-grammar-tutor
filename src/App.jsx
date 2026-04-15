@@ -454,8 +454,18 @@ export default function EnglishGrammarTutor() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("anthropic_api_key") || "");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [showKeyModal, setShowKeyModal] = useState(false);
   const chatEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  const saveApiKey = () => {
+    localStorage.setItem("anthropic_api_key", apiKeyInput.trim());
+    setApiKey(apiKeyInput.trim());
+    setShowKeyModal(false);
+    setApiKeyInput("");
+  };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -480,6 +490,7 @@ export default function EnglishGrammarTutor() {
 
   const sendChat = async () => {
     if (!chatInput.trim() || chatLoading) return;
+    if (!apiKey) { setShowKeyModal(true); return; }
     const userMsg = chatInput.trim();
     setChatInput("");
     setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
@@ -491,7 +502,12 @@ export default function EnglishGrammarTutor() {
       const history = chatMessages.slice(-8).map(m => ({ role: m.role, content: m.content }));
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
@@ -500,10 +516,11 @@ export default function EnglishGrammarTutor() {
         })
       });
       const data = await response.json();
+      if (data.error) throw new Error(data.error.message);
       const reply = data.content?.[0]?.text || "Xin lỗi, có lỗi xảy ra. Hãy thử lại!";
       setChatMessages(prev => [...prev, { role: "assistant", content: reply }]);
-    } catch {
-      setChatMessages(prev => [...prev, { role: "assistant", content: "❌ Lỗi kết nối. Hãy thử lại nhé!" }]);
+    } catch(e) {
+      setChatMessages(prev => [...prev, { role: "assistant", content: `❌ Lỗi: ${e.message}` }]);
     }
     setChatLoading(false);
   };
@@ -515,6 +532,50 @@ export default function EnglishGrammarTutor() {
       display: "flex", height: "100vh", fontFamily: "'Segoe UI', sans-serif",
       background: "#0f172a", color: "#e2e8f0", overflow: "hidden"
     }}>
+      {/* API Key Modal */}
+      {showKeyModal && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+        }}>
+          <div style={{
+            background: "#1e293b", border: "1px solid #334155", borderRadius: 16,
+            padding: 32, width: 420, maxWidth: "90vw"
+          }}>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>🔑 Nhập Anthropic API Key</div>
+            <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 16, lineHeight: 1.6 }}>
+              Để dùng tính năng Hỏi Giáo Viên AI, thầy cần API Key từ Anthropic.<br/>
+              Lấy key miễn phí tại: <a href="https://console.anthropic.com" target="_blank" style={{ color: "#38bdf8" }}>console.anthropic.com</a>
+            </div>
+            <input
+              value={apiKeyInput}
+              onChange={e => setApiKeyInput(e.target.value)}
+              placeholder="sk-ant-api03-..."
+              type="password"
+              style={{
+                width: "100%", padding: "10px 14px", borderRadius: 8, boxSizing: "border-box",
+                background: "#0f172a", border: "1px solid #475569", color: "#f1f5f9",
+                fontSize: 14, outline: "none", marginBottom: 12
+              }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={saveApiKey} disabled={!apiKeyInput.trim()} style={{
+                flex: 1, padding: "10px", borderRadius: 8, background: "#1d4ed8",
+                border: "none", color: "#fff", cursor: "pointer", fontWeight: 700
+              }}>✅ Lưu API Key</button>
+              <button onClick={() => setShowKeyModal(false)} style={{
+                padding: "10px 16px", borderRadius: 8, background: "transparent",
+                border: "1px solid #334155", color: "#94a3b8", cursor: "pointer"
+              }}>Đóng</button>
+            </div>
+            {apiKey && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#10b981" }}>
+                ✅ Đã có API Key. Nhập key mới để thay thế.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <div style={{
         width: sidebarOpen ? 280 : 0, minWidth: sidebarOpen ? 280 : 0,
@@ -585,6 +646,14 @@ export default function EnglishGrammarTutor() {
               {currentModule ? "Học lý thuyết → Luyện bài tập" : "Đặt câu hỏi bất kỳ về ngữ pháp tiếng Anh"}
             </div>
           </div>
+          <button onClick={() => setShowKeyModal(true)} title="Cài đặt API Key" style={{
+            padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: 12,
+            background: apiKey ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.15)",
+            color: apiKey ? "#10b981" : "#ef4444",
+            border: `1px solid ${apiKey ? "#10b981" : "#ef4444"}`
+          }}>
+            {apiKey ? "🔑 Key OK" : "🔑 Thêm Key"}
+          </button>
           {currentModule && (
             <div style={{ display: "flex", gap: 6 }}>
               {["theory", "exercises"].map(tab => (
